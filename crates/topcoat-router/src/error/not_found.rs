@@ -1,26 +1,10 @@
 use http::StatusCode;
-use topcoat_core::{context::Cx, error::Result};
+use topcoat_core::context::Cx;
+use topcoat_core::error::{HttpErrorResponse, Result};
 
 use crate::{IntoResponse, Response};
 
 /// Builds a not-found (HTTP 404) response.
-///
-/// # Examples
-///
-/// ```rust
-/// # struct User;
-/// # async fn lookup(_cx: &Cx, _id: u64) -> Option<User> { None }
-/// use topcoat::Result;
-/// use topcoat::context::Cx;
-/// use topcoat::router::error::not_found;
-///
-/// async fn fetch_user(cx: &Cx, id: u64) -> Result<User> {
-///     let Some(user) = lookup(cx, id).await else {
-///         return Err(not_found().into());
-///     };
-///     Ok(user)
-/// }
-/// ```
 #[must_use]
 pub fn not_found() -> NotFoundError {
     NotFoundError::new()
@@ -49,8 +33,14 @@ impl std::fmt::Display for NotFoundError {
 
 impl std::error::Error for NotFoundError {}
 
+impl HttpErrorResponse for NotFoundError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::NOT_FOUND
+    }
+}
+
 impl IntoResponse for NotFoundError {
     fn into_response(self, cx: &Cx) -> Result<Response> {
-        (StatusCode::NOT_FOUND, "not found").into_response(cx)
+        (self.status_code(), self.response_body()).into_response(cx)
     }
 }

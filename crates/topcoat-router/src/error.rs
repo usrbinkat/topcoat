@@ -31,30 +31,16 @@ pub(crate) fn respond(cx: &Cx, value: impl IntoResponse) -> Response {
         .unwrap_or_else(|error| error_into_response(cx, error))
 }
 
-/// Maps the framework's error types onto their HTTP status codes, falling back
-/// to a 500 for anything else.
+/// Maps any error onto its HTTP status code and body using the
+/// [`HttpErrorResponse`] trait. No hardcoded type list — any application
+/// error that implements the trait participates automatically.
 fn error_into_response(cx: &Cx, error: Error) -> Response {
-    macro_rules! try_downcast {
-        ($ident:ident as $ty:ty) => {
-            match $ident.downcast::<$ty>() {
-                Ok(error) => return into_response_or_500(cx, error),
-                Err(error) => error,
-            }
-        };
-    }
-    let error = try_downcast!(error as ForbiddenError);
-    let error = try_downcast!(error as BadRequestError);
-    let error = try_downcast!(error as InternalServerError);
-    let error = try_downcast!(error as NotFoundError);
-    let error = try_downcast!(error as MethodNotAllowedError);
-    let error = try_downcast!(error as RedirectError);
-    let error = try_downcast!(error as UnauthorizedError);
-
-    into_response_or_500(cx, internal_server_error(error))
+    let status = error.status_code();
+    let body = error.response_body();
+    into_response_or_500(cx, (status, body))
 }
 
-/// Renders an error response, falling back to a bare 500 (none of the error
-/// types' responses can actually fail to build).
+/// Renders an error response, falling back to a bare 500.
 fn into_response_or_500(cx: &Cx, value: impl IntoResponse) -> Response {
     value.into_response(cx).unwrap_or_else(|_| {
         let mut response = Response::new(Body::from("internal server error"));
@@ -90,68 +76,15 @@ impl IntoResponse for Error {
 /// original error). Designed to be combined with `?` so a handler can return a
 /// redirect, not-found, unauthorized, forbidden, or bad-request response when
 /// required state is missing or invalid.
-///
-/// # Examples
-///
-/// ```rust
-/// # struct User;
-/// # async fn lookup(_cx: &Cx, _id: u64) -> Option<User> { None }
-/// use topcoat::Result;
-/// use topcoat::context::Cx;
-/// use topcoat::router::error::RouterErrorExt;
-///
-/// async fn fetch_user(cx: &Cx, id: u64) -> Result<User> {
-///     let user = lookup(cx, id).await.ok_or_redirect("/users")?;
-///     Ok(user)
-/// }
-/// ```
 pub trait RouterErrorExt {
     /// The success type produced when the value is present.
     type T;
 
-    /// Returns `Ok(value)` if present, otherwise a temporary redirect to `uri`.
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`RedirectError`] performing a temporary redirect to `uri`
-    /// when the value is absent.
     fn ok_or_redirect(self, uri: &str) -> Result<Self::T, RedirectError>;
-
-    /// Returns `Ok(value)` if present, otherwise a permanent redirect to `uri`.
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`RedirectError`] performing a permanent redirect to `uri`
-    /// when the value is absent.
     fn ok_or_redirect_permanent(self, uri: &str) -> Result<Self::T, RedirectError>;
-
-    /// Returns `Ok(value)` if present, otherwise a not-found response.
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`NotFoundError`] when the value is absent.
     fn ok_or_not_found(self) -> Result<Self::T, NotFoundError>;
-
-    /// Returns `Ok(value)` if present, otherwise an unauthorized response.
-    ///
-    /// # Errors
-    ///
-    /// Returns an [`UnauthorizedError`] when the value is absent.
     fn ok_or_unauthorized(self) -> Result<Self::T, UnauthorizedError>;
-
-    /// Returns `Ok(value)` if present, otherwise a forbidden response.
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`ForbiddenError`] when the value is absent.
     fn ok_or_forbidden(self) -> Result<Self::T, ForbiddenError>;
-
-    /// Returns `Ok(value)` if present, otherwise a bad-request response.
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`BadRequestError`] carrying `description` when the value is
-    /// absent.
     fn ok_or_bad_request(self, description: impl Into<String>) -> Result<Self::T, BadRequestError>;
 }
 
@@ -159,45 +92,27 @@ impl<T> RouterErrorExt for Option<T> {
     type T = T;
 
     fn ok_or_redirect(self, uri: &str) -> Result<Self::T, RedirectError> {
-        match self {
-            Some(value) => Ok(value),
-            None => Err(redirect(uri)),
-        }
+        self.ok_or_else(|| redirect(uri))
     }
 
     fn ok_or_redirect_permanent(self, uri: &str) -> Result<Self::T, RedirectError> {
-        match self {
-            Some(value) => Ok(value),
-            None => Err(redirect_permanent(uri)),
-        }
+        self.ok_or_else(|| redirect_permanent(uri))
     }
 
     fn ok_or_not_found(self) -> Result<Self::T, NotFoundError> {
-        match self {
-            Some(value) => Ok(value),
-            None => Err(not_found()),
-        }
+        self.ok_or_else(not_found)
     }
 
     fn ok_or_unauthorized(self) -> Result<Self::T, UnauthorizedError> {
-        match self {
-            Some(value) => Ok(value),
-            None => Err(unauthorized()),
-        }
+        self.ok_or_else(unauthorized)
     }
 
     fn ok_or_forbidden(self) -> Result<Self::T, ForbiddenError> {
-        match self {
-            Some(value) => Ok(value),
-            None => Err(forbidden()),
-        }
+        self.ok_or_else(forbidden)
     }
 
     fn ok_or_bad_request(self, description: impl Into<String>) -> Result<Self::T, BadRequestError> {
-        match self {
-            Some(value) => Ok(value),
-            None => Err(bad_request(description)),
-        }
+        self.ok_or_else(|| bad_request(description))
     }
 }
 
@@ -205,44 +120,26 @@ impl<T, E> RouterErrorExt for Result<T, E> {
     type T = T;
 
     fn ok_or_redirect(self, uri: &str) -> Result<Self::T, RedirectError> {
-        match self {
-            Ok(value) => Ok(value),
-            Err(_) => Err(redirect(uri)),
-        }
+        self.map_err(|_| redirect(uri))
     }
 
     fn ok_or_redirect_permanent(self, uri: &str) -> Result<Self::T, RedirectError> {
-        match self {
-            Ok(value) => Ok(value),
-            Err(_) => Err(redirect_permanent(uri)),
-        }
+        self.map_err(|_| redirect_permanent(uri))
     }
 
     fn ok_or_not_found(self) -> Result<Self::T, NotFoundError> {
-        match self {
-            Ok(value) => Ok(value),
-            Err(_) => Err(not_found()),
-        }
+        self.map_err(|_| not_found())
     }
 
     fn ok_or_unauthorized(self) -> Result<Self::T, UnauthorizedError> {
-        match self {
-            Ok(value) => Ok(value),
-            Err(_) => Err(unauthorized()),
-        }
+        self.map_err(|_| unauthorized())
     }
 
     fn ok_or_forbidden(self) -> Result<Self::T, ForbiddenError> {
-        match self {
-            Ok(value) => Ok(value),
-            Err(_) => Err(forbidden()),
-        }
+        self.map_err(|_| forbidden())
     }
 
     fn ok_or_bad_request(self, description: impl Into<String>) -> Result<Self::T, BadRequestError> {
-        match self {
-            Ok(value) => Ok(value),
-            Err(_) => Err(bad_request(description)),
-        }
+        self.map_err(|_| bad_request(description))
     }
 }

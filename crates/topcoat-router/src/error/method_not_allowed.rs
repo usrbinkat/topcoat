@@ -1,32 +1,18 @@
 use http::{HeaderValue, Method, StatusCode};
-use topcoat_core::{context::Cx, error::Result};
+use topcoat_core::context::Cx;
+use topcoat_core::error::{HttpErrorResponse, Result};
 
 use crate::{Body, IntoResponse, Response};
 
 /// Builds a method-not-allowed (HTTP 405) response whose `Allow` header lists
 /// `methods`, the methods the matched path actually supports.
-///
-/// The router returns this when a request's path matches a route but its method
-/// does not.
-///
-/// # Examples
-///
-/// ```rust
-/// use topcoat::router::{Method, error::method_not_allowed};
-///
-/// let error = method_not_allowed([Method::GET, Method::POST]);
-/// ```
 pub fn method_not_allowed(methods: impl IntoIterator<Item = Method>) -> MethodNotAllowedError {
     MethodNotAllowedError::new(methods)
 }
 
-/// A method-not-allowed response carried as the `Err` variant of a handler
-/// `Result`.
-///
-/// Construct one with [`method_not_allowed`].
+/// A method-not-allowed response carried as the `Err` variant of a handler `Result`.
 #[derive(Debug)]
 pub struct MethodNotAllowedError {
-    /// The value of the `Allow` header: the supported methods, comma-separated.
     allow: String,
 }
 
@@ -48,6 +34,12 @@ impl std::fmt::Display for MethodNotAllowedError {
 }
 
 impl std::error::Error for MethodNotAllowedError {}
+
+impl HttpErrorResponse for MethodNotAllowedError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::METHOD_NOT_ALLOWED
+    }
+}
 
 impl IntoResponse for MethodNotAllowedError {
     fn into_response(self, _cx: &Cx) -> Result<Response> {

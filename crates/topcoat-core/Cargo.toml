@@ -15,12 +15,12 @@ rust-version.workspace = true
 build = []
 
 [dependencies]
-anyhow.workspace = true
 anymap3.workspace = true
+http.workspace = true
 boxcar.workspace = true
 hashbrown.workspace = true
 pin-project-lite.workspace = true
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "rt"] }
 
 [dev-dependencies]
 topcoat.workspace = true

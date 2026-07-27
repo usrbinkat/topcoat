@@ -1,37 +1,16 @@
 use http::StatusCode;
-use topcoat_core::{context::Cx, error::Result};
+use topcoat_core::context::Cx;
+use topcoat_core::error::{HttpErrorResponse, Result};
 
 use crate::{IntoResponse, Response};
 
 /// Builds an unauthorized (HTTP 401) response.
-///
-/// Use this when the request lacks valid authentication credentials.
-///
-/// # Examples
-///
-/// ```rust
-/// # struct User;
-/// # async fn session(_cx: &Cx) -> Option<User> { None }
-/// use topcoat::Result;
-/// use topcoat::context::Cx;
-/// use topcoat::router::error::unauthorized;
-///
-/// async fn current_user(cx: &Cx) -> Result<User> {
-///     let Some(user) = session(cx).await else {
-///         return Err(unauthorized().into());
-///     };
-///     Ok(user)
-/// }
-/// ```
 #[must_use]
 pub fn unauthorized() -> UnauthorizedError {
     UnauthorizedError::new()
 }
 
 /// An unauthorized response carried as the `Err` variant of a handler `Result`.
-///
-/// Construct one with [`unauthorized`], or derive one from an `Option` /
-/// `Result` via [`RouterErrorExt`](crate::error::RouterErrorExt).
 #[derive(Debug)]
 pub struct UnauthorizedError {
     _priv: (),
@@ -51,8 +30,14 @@ impl std::fmt::Display for UnauthorizedError {
 
 impl std::error::Error for UnauthorizedError {}
 
+impl HttpErrorResponse for UnauthorizedError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::UNAUTHORIZED
+    }
+}
+
 impl IntoResponse for UnauthorizedError {
     fn into_response(self, cx: &Cx) -> Result<Response> {
-        (StatusCode::UNAUTHORIZED, "unauthorized").into_response(cx)
+        (self.status_code(), self.response_body()).into_response(cx)
     }
 }

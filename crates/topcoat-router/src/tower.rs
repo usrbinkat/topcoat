@@ -372,6 +372,16 @@ impl Display for TowerNextError {
 
 impl std::error::Error for TowerNextError {}
 
+impl topcoat_core::error::HttpErrorResponse for TowerNextError {
+    fn status_code(&self) -> http::StatusCode {
+        http::StatusCode::INTERNAL_SERVER_ERROR
+    }
+
+    fn response_body(&self) -> String {
+        "internal server error".to_owned()
+    }
+}
+
 /// An error a tower service produced itself, as opposed to one that passed
 /// through it from wrapped routes.
 ///
@@ -406,6 +416,16 @@ impl Display for TowerServiceError {
 impl std::error::Error for TowerServiceError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(self.0.as_ref())
+    }
+}
+
+impl topcoat_core::error::HttpErrorResponse for TowerServiceError {
+    fn status_code(&self) -> http::StatusCode {
+        http::StatusCode::INTERNAL_SERVER_ERROR
+    }
+
+    fn response_body(&self) -> String {
+        "internal server error".to_owned()
     }
 }
 

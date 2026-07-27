@@ -1,54 +1,21 @@
 use http::StatusCode;
-use topcoat_core::{
-    context::Cx,
-    error::{Error, Result},
-};
+use topcoat_core::context::Cx;
+use topcoat_core::error::{HttpErrorResponse, Result};
 
 use crate::{IntoResponse, Response};
 
 /// Builds an internal-server-error (HTTP 500) response.
-///
-/// Use this when a handler needs to turn an unexpected application error
-/// into a response without exposing the underlying error to the client.
-///
-/// # Examples
-///
-/// ```rust
-/// # use topcoat::Error;
-/// # struct Dashboard;
-/// # async fn fetch_dashboard(_cx: &Cx) -> Result<Dashboard, Error> { Ok(Dashboard) }
-/// use topcoat::Result;
-/// use topcoat::context::Cx;
-/// use topcoat::router::error::internal_server_error;
-///
-/// async fn load_dashboard(cx: &Cx) -> Result<Dashboard> {
-///     let dashboard = fetch_dashboard(cx).await.map_err(internal_server_error)?;
-///
-///     Ok(dashboard)
-/// }
-/// ```
-pub fn internal_server_error(error: impl Into<Error>) -> InternalServerError {
-    InternalServerError::new(error.into())
+pub fn internal_server_error(description: impl Into<String>) -> InternalServerError {
+    InternalServerError {
+        description: description.into(),
+    }
 }
 
 /// An internal-server-error response carried as the `Err` variant of a handler `Result`.
-///
-/// Construct one with [`internal_server_error`].
 #[derive(Debug)]
 pub struct InternalServerError {
-    _inner: Error,
-}
-
-impl InternalServerError {
-    fn new(inner: Error) -> Self {
-        Self { _inner: inner }
-    }
-}
-
-impl From<Error> for InternalServerError {
-    fn from(value: Error) -> Self {
-        Self::new(value)
-    }
+    #[allow(dead_code)]
+    description: String,
 }
 
 impl std::fmt::Display for InternalServerError {
@@ -59,8 +26,18 @@ impl std::fmt::Display for InternalServerError {
 
 impl std::error::Error for InternalServerError {}
 
+impl HttpErrorResponse for InternalServerError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+
+    fn response_body(&self) -> String {
+        "internal server error".to_owned()
+    }
+}
+
 impl IntoResponse for InternalServerError {
     fn into_response(self, cx: &Cx) -> Result<Response> {
-        (StatusCode::INTERNAL_SERVER_ERROR, "internal server error").into_response(cx)
+        (self.status_code(), self.response_body()).into_response(cx)
     }
 }

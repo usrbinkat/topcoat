@@ -1,40 +1,16 @@
 use http::StatusCode;
-use topcoat_core::{context::Cx, error::Result};
+use topcoat_core::context::Cx;
+use topcoat_core::error::{HttpErrorResponse, Result};
 
 use crate::{IntoResponse, Response};
 
 /// Builds a forbidden (HTTP 403) response.
-///
-/// Use this when the caller is authenticated but not permitted to access
-/// the resource.
-///
-/// # Examples
-///
-/// ```rust
-/// # use topcoat::view::View;
-/// # struct User;
-/// # impl User { fn is_admin(&self) -> bool { true } }
-/// # fn render_admin(_cx: &Cx) -> View { View::default() }
-/// use topcoat::Result;
-/// use topcoat::context::Cx;
-/// use topcoat::router::error::forbidden;
-///
-/// async fn admin_panel(cx: &Cx, user: &User) -> Result<View> {
-///     if !user.is_admin() {
-///         return Err(forbidden().into());
-///     }
-///     Ok(render_admin(cx))
-/// }
-/// ```
 #[must_use]
 pub fn forbidden() -> ForbiddenError {
     ForbiddenError::new()
 }
 
 /// A forbidden response carried as the `Err` variant of a handler `Result`.
-///
-/// Construct one with [`forbidden`], or derive one from an `Option` /
-/// `Result` via [`RouterErrorExt`](crate::error::RouterErrorExt).
 #[derive(Debug)]
 pub struct ForbiddenError {
     _priv: (),
@@ -54,8 +30,14 @@ impl std::fmt::Display for ForbiddenError {
 
 impl std::error::Error for ForbiddenError {}
 
+impl HttpErrorResponse for ForbiddenError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::FORBIDDEN
+    }
+}
+
 impl IntoResponse for ForbiddenError {
     fn into_response(self, cx: &Cx) -> Result<Response> {
-        (StatusCode::FORBIDDEN, "forbidden").into_response(cx)
+        (self.status_code(), self.response_body()).into_response(cx)
     }
 }

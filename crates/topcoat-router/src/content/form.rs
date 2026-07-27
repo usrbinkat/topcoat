@@ -5,7 +5,7 @@ use http::{
     Method,
     header::{CONTENT_TYPE, HeaderValue},
 };
-use topcoat_core::{context::Cx, error::Result};
+use topcoat_core::{context::Cx, error::{Error, Result}};
 
 use crate::{
     Body, Bytes, FromRequest, IntoResponse, OptionalFromRequest, Response, content_type,
@@ -136,7 +136,7 @@ where
                 CONTENT_TYPE,
                 HeaderValue::from_static("application/x-www-form-urlencoded"),
             )],
-            serde_urlencoded::to_string(&self.0)?,
+            serde_urlencoded::to_string(&self.0).map_err(Error::internal)?,
         )
             .into_response(cx)
     }
