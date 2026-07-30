@@ -29,6 +29,15 @@ use crate::{
 /// # Ok(())
 /// # }
 /// ```
+/// A synchronous, infallible function applied to every response after all
+/// layers and error conversion, before compression and wire transmission.
+///
+/// Response hooks run unconditionally on every response the router produces,
+/// including 404, 405, and error responses. They cannot fail and cannot be
+/// bypassed. Use them for invariant headers (Warning, Server, X-Request-Id)
+/// that must appear on every response regardless of handler outcome.
+pub type ResponseHook = fn(Response) -> Response;
+
 pub struct Router {
     /// The registered routes, indexed by the values stored in `endpoints`.
     routes: Vec<Box<dyn Route>>,
@@ -41,6 +50,9 @@ pub struct Router {
     /// The values shared by every request, read back via
     /// [`app_context`](topcoat_core::context::app_context).
     app_context: Arc<ContextMap>,
+    /// Functions applied to every response after layers and error conversion.
+    /// Runs after `respond()`, before compression. Cannot be bypassed.
+    response_hooks: Vec<ResponseHook>,
     /// The compression applied to responses on their way out.
     #[cfg(feature = "compression")]
     compression: crate::Compression,
@@ -98,7 +110,13 @@ impl Router {
 
         let next = Next::new(&self.layers, layers, terminal);
         let response = next.run(&mut cx, body).await;
-        let response = respond(&cx, response);
+        let mut response = respond(&cx, response);
+
+        // Response hooks: unconditional, infallible, post-error-conversion.
+        // Every response passes through every hook. No exceptions.
+        for hook in &self.response_hooks {
+            response = hook(response);
+        }
 
         // Compression runs outside every layer, so layers see uncompressed
         // bodies. The negotiation reads the request headers as the layers
@@ -149,6 +167,7 @@ pub struct RouterBuilder {
     pages: Vec<PageFn>,
     layouts: Vec<LayoutFn>,
     layers: Layers,
+    response_hooks: Vec<ResponseHook>,
     context: ContextMap,
     #[cfg(feature = "compression")]
     compression: crate::Compression,
@@ -166,6 +185,7 @@ impl RouterBuilder {
             pages: Vec::new(),
             layouts: Vec::new(),
             layers: Layers::default(),
+            response_hooks: Vec::new(),
             context,
             #[cfg(feature = "compression")]
             compression: crate::Compression::new(),
@@ -302,6 +322,33 @@ impl RouterBuilder {
         self
     }
 
+    /// Registers a [`ResponseHook`] that runs on every response after all
+    /// layers and error conversion, before compression.
+    ///
+    /// Hooks run in registration order. They are synchronous, infallible,
+    /// and cannot be bypassed. Use them for headers that MUST appear on
+    /// every response (Warning, Server, etc.).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use topcoat::router::{Response, Router};
+    ///
+    /// fn add_server_header(mut resp: Response) -> Response {
+    ///     resp.headers_mut().insert("server", "my-app/1.0".parse().unwrap());
+    ///     resp
+    /// }
+    ///
+    /// let router = Router::builder()
+    ///     .response_hook(add_server_header)
+    ///     .build();
+    /// ```
+    #[must_use]
+    pub fn response_hook(mut self, hook: ResponseHook) -> Self {
+        self.response_hooks.push(hook);
+        self
+    }
+
     /// Configures the compression applied to responses.
     ///
     /// By default the router compresses each response with the algorithm
@@ -420,6 +467,7 @@ impl RouterBuilder {
             pages,
             layouts,
             layers,
+            response_hooks,
             context,
             #[cfg(feature = "compression")]
             compression,
@@ -526,6 +574,7 @@ impl RouterBuilder {
             endpoints,
             layers,
             app_context: Arc::new(context),
+            response_hooks,
             #[cfg(feature = "compression")]
             compression,
         }
