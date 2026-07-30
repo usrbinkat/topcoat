@@ -38,6 +38,16 @@ use crate::{
 /// that must appear on every response regardless of handler outcome.
 pub type ResponseHook = fn(Response) -> Response;
 
+/// A synchronous check that runs before any layer or route handler, with
+/// read access to the request context (method, path, app_context).
+///
+/// Returns `Ok(())` to proceed with the layer chain, or `Err(Response)` to
+/// short-circuit. Short-circuit responses still pass through response hooks.
+///
+/// Request guards run in registration order. The first guard that rejects
+/// wins. Guards cannot modify the request context -- they observe and gate.
+pub type RequestGuard = fn(&CxBuilder) -> Result<(), Response>;
+
 pub struct Router {
     /// The registered routes, indexed by the values stored in `endpoints`.
     routes: Vec<Box<dyn Route>>,
@@ -50,6 +60,10 @@ pub struct Router {
     /// The values shared by every request, read back via
     /// [`app_context`](topcoat_core::context::app_context).
     app_context: Arc<ContextMap>,
+    /// Checks that run before any layer or route, with read access to the
+    /// request context. A rejected request skips layers entirely but still
+    /// passes through response hooks.
+    request_guards: Vec<RequestGuard>,
     /// Functions applied to every response after layers and error conversion.
     /// Runs after `respond()`, before compression. Cannot be bypassed.
     response_hooks: Vec<ResponseHook>,
@@ -108,9 +122,23 @@ impl Router {
         cx.insert(path_params);
         cx.insert(parts);
 
-        let next = Next::new(&self.layers, layers, terminal);
-        let response = next.run(&mut cx, body).await;
-        let mut response = respond(&cx, response);
+        // Request guards: run before any layer or route. First rejection wins.
+        // Rejected responses skip layers but still pass through response hooks.
+        let mut guard_rejection = None;
+        for guard in &self.request_guards {
+            if let Err(rejection) = guard(&cx) {
+                guard_rejection = Some(rejection);
+                break;
+            }
+        }
+
+        let mut response = if let Some(rejection) = guard_rejection {
+            rejection
+        } else {
+            let next = Next::new(&self.layers, layers, terminal);
+            let response = next.run(&mut cx, body).await;
+            respond(&cx, response)
+        };
 
         // Response hooks: unconditional, infallible, post-error-conversion.
         // Every response passes through every hook. No exceptions.
@@ -167,6 +195,7 @@ pub struct RouterBuilder {
     pages: Vec<PageFn>,
     layouts: Vec<LayoutFn>,
     layers: Layers,
+    request_guards: Vec<RequestGuard>,
     response_hooks: Vec<ResponseHook>,
     context: ContextMap,
     #[cfg(feature = "compression")]
@@ -185,6 +214,7 @@ impl RouterBuilder {
             pages: Vec::new(),
             layouts: Vec::new(),
             layers: Layers::default(),
+            request_guards: Vec::new(),
             response_hooks: Vec::new(),
             context,
             #[cfg(feature = "compression")]
@@ -349,6 +379,21 @@ impl RouterBuilder {
         self
     }
 
+    /// Registers a [`RequestGuard`] that runs before any layer or route.
+    ///
+    /// Guards run in registration order. The first guard that returns
+    /// `Err(Response)` short-circuits: no layers run, no route runs, but
+    /// response hooks still apply to the rejection response.
+    ///
+    /// Guards have read-only access to the request context via `&CxBuilder`,
+    /// which dereferences to `&Cx`. Use `app_context`, `request_context`,
+    /// `uri`, `method`, and `headers` to inspect the request.
+    #[must_use]
+    pub fn request_guard(mut self, guard: RequestGuard) -> Self {
+        self.request_guards.push(guard);
+        self
+    }
+
     /// Configures the compression applied to responses.
     ///
     /// By default the router compresses each response with the algorithm
@@ -467,6 +512,7 @@ impl RouterBuilder {
             pages,
             layouts,
             layers,
+            request_guards,
             response_hooks,
             context,
             #[cfg(feature = "compression")]
@@ -574,6 +620,7 @@ impl RouterBuilder {
             endpoints,
             layers,
             app_context: Arc::new(context),
+            request_guards,
             response_hooks,
             #[cfg(feature = "compression")]
             compression,
