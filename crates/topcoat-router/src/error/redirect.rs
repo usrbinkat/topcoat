@@ -45,6 +45,8 @@ impl HttpErrorResponse for RedirectError {
     fn status_code(&self) -> StatusCode {
         self.status
     }
+
+    topcoat_core::impl_http_error_response_any!();
 }
 
 impl IntoResponse for RedirectError {

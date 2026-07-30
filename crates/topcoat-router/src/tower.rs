@@ -380,6 +380,8 @@ impl topcoat_core::error::HttpErrorResponse for TowerNextError {
     fn response_body(&self) -> String {
         "internal server error".to_owned()
     }
+
+    topcoat_core::impl_http_error_response_any!();
 }
 
 /// An error a tower service produced itself, as opposed to one that passed
@@ -427,6 +429,8 @@ impl topcoat_core::error::HttpErrorResponse for TowerServiceError {
     fn response_body(&self) -> String {
         "internal server error".to_owned()
     }
+
+    topcoat_core::impl_http_error_response_any!();
 }
 
 /// A call from [`TowerNext`] back into the wrapped chain: the (possibly

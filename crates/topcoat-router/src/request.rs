@@ -56,7 +56,8 @@ pub type Request<T = Body> = http::Request<T>;
 ///
 ///         verify_signature(signature, &bytes)?;
 ///
-///         Ok(Self(serde_json::from_slice(&bytes)?))
+///         Ok(Self(serde_json::from_slice(&bytes)
+///             .map_err(|e| bad_request(format!("invalid JSON: {e}")))?))
 ///     }
 /// }
 ///

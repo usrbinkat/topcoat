@@ -36,8 +36,11 @@ pub(crate) fn respond(cx: &Cx, value: impl IntoResponse) -> Response {
 /// error that implements the trait participates automatically.
 fn error_into_response(cx: &Cx, error: Error) -> Response {
     let status = error.status_code();
+    let headers = error.error_headers();
     let body = error.response_body();
-    into_response_or_500(cx, (status, body))
+    let mut response = into_response_or_500(cx, (status, body));
+    response.headers_mut().extend(headers);
+    response
 }
 
 /// Renders an error response, falling back to a bare 500.

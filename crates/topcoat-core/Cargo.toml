@@ -13,14 +13,18 @@ rust-version.workspace = true
 [features]
 # Exposes the `cache` module for use from build scripts.
 build = []
+# HttpErrorResponse impls for websocket-related error types.
+websocket = ["dep:hyper", "dep:tokio-tungstenite"]
 
 [dependencies]
 anymap3.workspace = true
 http.workspace = true
 boxcar.workspace = true
 hashbrown.workspace = true
+hyper = { workspace = true, optional = true }
 pin-project-lite.workspace = true
 tokio = { workspace = true, features = ["sync", "rt"] }
+tokio-tungstenite = { workspace = true, optional = true }
 
 [dev-dependencies]
 topcoat.workspace = true

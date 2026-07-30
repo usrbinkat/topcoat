@@ -39,6 +39,16 @@ impl HttpErrorResponse for MethodNotAllowedError {
     fn status_code(&self) -> StatusCode {
         StatusCode::METHOD_NOT_ALLOWED
     }
+
+    fn error_headers(&self) -> http::HeaderMap {
+        let mut headers = http::HeaderMap::new();
+        if let Ok(allow) = HeaderValue::from_str(&self.allow) {
+            headers.insert(http::header::ALLOW, allow);
+        }
+        headers
+    }
+
+    topcoat_core::impl_http_error_response_any!();
 }
 
 impl IntoResponse for MethodNotAllowedError {

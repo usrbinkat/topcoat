@@ -37,6 +37,8 @@ impl HttpErrorResponse for NotFoundError {
     fn status_code(&self) -> StatusCode {
         StatusCode::NOT_FOUND
     }
+
+    topcoat_core::impl_http_error_response_any!();
 }
 
 impl IntoResponse for NotFoundError {

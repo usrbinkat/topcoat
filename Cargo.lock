@@ -2739,12 +2739,14 @@ dependencies = [
 name = "topcoat-core"
 version = "0.4.0"
 dependencies = [
- "anyhow",
  "anymap3",
  "boxcar",
  "hashbrown 0.17.0",
+ "http",
+ "hyper",
  "pin-project-lite",
  "tokio",
+ "tokio-tungstenite",
  "topcoat",
 ]
 

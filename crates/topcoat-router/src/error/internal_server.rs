@@ -34,6 +34,8 @@ impl HttpErrorResponse for InternalServerError {
     fn response_body(&self) -> String {
         "internal server error".to_owned()
     }
+
+    topcoat_core::impl_http_error_response_any!();
 }
 
 impl IntoResponse for InternalServerError {

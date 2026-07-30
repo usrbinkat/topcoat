@@ -62,6 +62,8 @@ impl HttpErrorResponse for BadRequestError {
     fn status_code(&self) -> StatusCode {
         StatusCode::BAD_REQUEST
     }
+
+    topcoat_core::impl_http_error_response_any!();
 }
 
 impl IntoResponse for BadRequestError {

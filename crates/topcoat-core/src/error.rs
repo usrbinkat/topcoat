@@ -18,6 +18,55 @@ pub trait HttpErrorResponse: Debug + Display + Send + Sync + 'static {
     fn response_body(&self) -> String {
         self.to_string()
     }
+
+    /// Additional headers to include in the error response.
+    ///
+    /// Override this to attach protocol-required headers to error responses,
+    /// e.g. `Allow` on 405, `WWW-Authenticate` on 401, `Retry-After` on 429.
+    /// The default returns an empty map.
+    fn error_headers(&self) -> http::HeaderMap {
+        http::HeaderMap::new()
+    }
+
+    /// Upcast to `Any` for downcasting. Provided automatically.
+    #[doc(hidden)]
+    fn as_any(&self) -> &dyn std::any::Any;
+
+    /// Upcast to mutable `Any` for downcasting. Provided automatically.
+    #[doc(hidden)]
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+
+    /// Move into `Box<dyn Any>` for owned downcasting. Provided automatically.
+    #[doc(hidden)]
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any>;
+}
+
+/// Blanket helper: every concrete `HttpErrorResponse` type automatically
+/// provides the `Any` upcasts needed for downcasting on `Error`.
+///
+/// This cannot be a default method on the trait because `Self: Sized` is
+/// required for `Box<Self> -> Box<dyn Any>`, which conflicts with object
+/// safety. Instead, the `From<T: HttpErrorResponse>` impl below ensures
+/// only `Sized` types enter the `Error` box, and the three `as_any` /
+/// `as_any_mut` / `into_any` methods are implemented by each concrete
+/// type via its `HttpErrorResponse` impl.
+///
+/// In practice, every `impl HttpErrorResponse for MyError` must include
+/// the three `Any` methods. The macro [`impl_http_error_response_any!`]
+/// generates them.
+#[macro_export]
+macro_rules! impl_http_error_response_any {
+    () => {
+        fn as_any(&self) -> &dyn ::std::any::Any {
+            self
+        }
+        fn as_any_mut(&mut self) -> &mut dyn ::std::any::Any {
+            self
+        }
+        fn into_any(self: Box<Self>) -> Box<dyn ::std::any::Any> {
+            self
+        }
+    };
 }
 
 /// Error type used by Topcoat APIs.
@@ -52,6 +101,8 @@ impl HttpErrorResponse for InternalError {
     fn response_body(&self) -> String {
         "internal server error".to_owned()
     }
+
+    impl_http_error_response_any!();
 }
 
 impl Error {
@@ -67,6 +118,12 @@ impl Error {
         self.0.response_body()
     }
 
+    /// Additional headers for the error response.
+    #[must_use]
+    pub fn error_headers(&self) -> http::HeaderMap {
+        self.0.error_headers()
+    }
+
     /// Wrap any error as a 500 Internal Server Error.
     ///
     /// Use this for errors that don't implement `HttpErrorResponse`
@@ -76,6 +133,30 @@ impl Error {
         Self(Box::new(InternalError {
             source: error.to_string(),
         }))
+    }
+
+    /// Downcast this error by reference to a concrete type.
+    #[must_use]
+    pub fn downcast_ref<E: HttpErrorResponse>(&self) -> Option<&E> {
+        self.0.as_any().downcast_ref::<E>()
+    }
+
+    /// Downcast this error by mutable reference to a concrete type.
+    pub fn downcast_mut<E: HttpErrorResponse>(&mut self) -> Option<&mut E> {
+        self.0.as_any_mut().downcast_mut::<E>()
+    }
+
+    /// Attempt to downcast the error to a concrete type.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(Self)` if the stored error is not an instance of `E`.
+    pub fn downcast<E: HttpErrorResponse>(self) -> Result<E, Self> {
+        if self.0.as_any().is::<E>() {
+            Ok(*self.0.into_any().downcast::<E>().unwrap())
+        } else {
+            Err(self)
+        }
     }
 }
 
@@ -108,6 +189,8 @@ impl HttpErrorResponse for std::io::Error {
     fn response_body(&self) -> String {
         "internal server error".to_owned()
     }
+
+    impl_http_error_response_any!();
 }
 
 impl HttpErrorResponse for http::Error {
@@ -118,6 +201,8 @@ impl HttpErrorResponse for http::Error {
     fn response_body(&self) -> String {
         "internal server error".to_owned()
     }
+
+    impl_http_error_response_any!();
 }
 
 impl HttpErrorResponse for tokio::task::JoinError {
@@ -128,4 +213,44 @@ impl HttpErrorResponse for tokio::task::JoinError {
     fn response_body(&self) -> String {
         "internal server error".to_owned()
     }
+
+    impl_http_error_response_any!();
+}
+
+impl HttpErrorResponse for http::header::InvalidHeaderValue {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+
+    fn response_body(&self) -> String {
+        "internal server error".to_owned()
+    }
+
+    impl_http_error_response_any!();
+}
+
+#[cfg(feature = "websocket")]
+impl HttpErrorResponse for hyper::Error {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+
+    fn response_body(&self) -> String {
+        "internal server error".to_owned()
+    }
+
+    impl_http_error_response_any!();
+}
+
+#[cfg(feature = "websocket")]
+impl HttpErrorResponse for tokio_tungstenite::tungstenite::Error {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+
+    fn response_body(&self) -> String {
+        "internal server error".to_owned()
+    }
+
+    impl_http_error_response_any!();
 }

@@ -42,6 +42,7 @@ websocket = [
 	"serve",
 	"dep:futures-sink",
 	"dep:tokio-tungstenite",
+	"topcoat-core/websocket",
 ]
 
 [dependencies]
