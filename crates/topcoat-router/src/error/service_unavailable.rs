@@ -1,5 +1,6 @@
 use http::{HeaderValue, StatusCode, header::RETRY_AFTER};
-use topcoat_core::{context::Cx, error::Result};
+use topcoat_core::context::Cx;
+use topcoat_core::error::{HttpErrorResponse, Result};
 
 use crate::response::{IntoResponse, Response};
 
@@ -69,6 +70,22 @@ impl std::fmt::Display for ServiceUnavailableError {
 }
 
 impl std::error::Error for ServiceUnavailableError {}
+
+impl HttpErrorResponse for ServiceUnavailableError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::SERVICE_UNAVAILABLE
+    }
+
+    fn error_headers(&self) -> http::HeaderMap {
+        let mut headers = http::HeaderMap::new();
+        if let Ok(value) = HeaderValue::from_str(&self.retry_after_secs.to_string()) {
+            headers.insert(RETRY_AFTER, value);
+        }
+        headers
+    }
+
+    topcoat_core::impl_http_error_response_any!();
+}
 
 impl IntoResponse for ServiceUnavailableError {
     fn into_response(self, cx: &Cx) -> Result<Response> {

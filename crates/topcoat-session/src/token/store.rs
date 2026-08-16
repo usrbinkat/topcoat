@@ -103,7 +103,8 @@ pub mod cookie {
             max_age: Duration,
         ) -> TokenStoreFuture<'a, ()> {
             Box::pin(async move {
-                let max_age = topcoat_cookie::time::Duration::try_from(max_age)?;
+                let max_age = topcoat_cookie::time::Duration::try_from(max_age)
+                    .map_err(topcoat_core::error::Error::internal)?;
                 cookies(cx)
                     .override_max_age(max_age)
                     .add(Cookie::new(self.name.clone(), token.encode()));

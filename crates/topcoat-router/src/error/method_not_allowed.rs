@@ -1,5 +1,6 @@
 use http::{HeaderValue, Method, StatusCode};
-use topcoat_core::{context::Cx, error::Result};
+use topcoat_core::context::Cx;
+use topcoat_core::error::{HttpErrorResponse, Result};
 
 use crate::{
     Body,
@@ -29,7 +30,6 @@ pub fn method_not_allowed(methods: impl IntoIterator<Item = Method>) -> MethodNo
 /// Construct one with [`method_not_allowed`].
 #[derive(Debug)]
 pub struct MethodNotAllowedError {
-    /// The value of the `Allow` header: the supported methods, comma-separated.
     allow: String,
 }
 
@@ -51,6 +51,22 @@ impl std::fmt::Display for MethodNotAllowedError {
 }
 
 impl std::error::Error for MethodNotAllowedError {}
+
+impl HttpErrorResponse for MethodNotAllowedError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::METHOD_NOT_ALLOWED
+    }
+
+    fn error_headers(&self) -> http::HeaderMap {
+        let mut headers = http::HeaderMap::new();
+        if let Ok(allow) = HeaderValue::from_str(&self.allow) {
+            headers.insert(http::header::ALLOW, allow);
+        }
+        headers
+    }
+
+    topcoat_core::impl_http_error_response_any!();
+}
 
 impl IntoResponse for MethodNotAllowedError {
     fn into_response(self, _cx: &Cx) -> Result<Response> {

@@ -2899,7 +2899,6 @@ dependencies = [
 name = "topcoat-core"
 version = "0.5.0"
 dependencies = [
- "anyhow",
  "anymap3",
  "elsa",
  "http",

@@ -191,7 +191,7 @@ impl WebSocketUpgrade {
             let upgraded = match on_upgrade.await {
                 Ok(upgraded) => upgraded,
                 Err(error) => {
-                    on_failed_upgrade(error.into());
+                    on_failed_upgrade(Error::internal(error));
                     return;
                 }
             };

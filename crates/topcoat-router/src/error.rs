@@ -50,33 +50,22 @@ pub(crate) fn internal_server_response() -> Response {
     response
 }
 
-/// Maps the framework's error types onto their HTTP status codes, falling back
-/// to a 500 for anything else.
+/// Maps any error onto its HTTP status code and body using the
+/// [`HttpErrorResponse`] trait. No hardcoded type list -- any application
+/// error that implements the trait participates automatically.
 fn error_into_response(cx: &Cx, error: Error) -> Response {
-    macro_rules! try_downcast {
-        ($ident:ident as $ty:ty) => {
-            match $ident.downcast::<$ty>() {
-                Ok(error) => return into_response_or_500(cx, error),
-                Err(error) => error,
-            }
-        };
-    }
-    let error = try_downcast!(error as ForbiddenError);
-    let error = try_downcast!(error as BadRequestError);
-    let error = try_downcast!(error as ContentTooLargeError);
-    let error = try_downcast!(error as InternalServerError);
-    let error = try_downcast!(error as NotFoundError);
-    let error = try_downcast!(error as MethodNotAllowedError);
-    let error = try_downcast!(error as RedirectError);
-    let error = try_downcast!(error as UnauthorizedError);
-    let error = try_downcast!(error as ServiceUnavailableError);
-    let error = try_downcast!(error as TooManyRequestsError);
-
-    into_response_or_500(cx, internal_server_error(error))
+    // RewriteError is intercepted by the router before reaching here,
+    // but if it somehow leaks, treat it as a 500 rather than rendering
+    // its Display output to the client.
+    let status = error.status_code();
+    let headers = error.error_headers();
+    let body = error.response_body();
+    let mut response = into_response_or_500(cx, (status, body));
+    response.headers_mut().extend(headers);
+    response
 }
 
-/// Renders an error response, falling back to a bare 500 (none of the error
-/// types' responses can actually fail to build).
+/// Renders an error response, falling back to a bare 500.
 fn into_response_or_500(cx: &Cx, value: impl IntoResponse) -> Response {
     value
         .into_response(cx)

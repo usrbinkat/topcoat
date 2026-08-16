@@ -89,7 +89,7 @@ impl Stream for WebSocket {
                     tungstenite::Error::ConnectionClosed | tungstenite::Error::AlreadyClosed,
                 ))
                 | None => return Poll::Ready(None),
-                Some(Err(error)) => return Poll::Ready(Some(Err(error.into()))),
+                Some(Err(error)) => return Poll::Ready(Some(Err(Error::internal(error)))),
             };
 
             // Raw frames are a write-side implementation detail; skip them.
@@ -104,20 +104,20 @@ impl Sink<Message> for WebSocket {
     type Error = Error;
 
     fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        Pin::new(&mut self.inner).poll_ready(cx).map_err(Into::into)
+        Pin::new(&mut self.inner).poll_ready(cx).map_err(|e| Error::internal(e))
     }
 
     fn start_send(mut self: Pin<&mut Self>, message: Message) -> Result<()> {
         Pin::new(&mut self.inner)
             .start_send(message.into_tungstenite())
-            .map_err(Into::into)
+            .map_err(|e| Error::internal(e))
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        Pin::new(&mut self.inner).poll_flush(cx).map_err(Into::into)
+        Pin::new(&mut self.inner).poll_flush(cx).map_err(|e| Error::internal(e))
     }
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        Pin::new(&mut self.inner).poll_close(cx).map_err(Into::into)
+        Pin::new(&mut self.inner).poll_close(cx).map_err(|e| Error::internal(e))
     }
 }

@@ -284,6 +284,14 @@ impl fmt::Display for InvalidSitemapError {
 
 impl std::error::Error for InvalidSitemapError {}
 
+impl topcoat_core::error::HttpErrorResponse for InvalidSitemapError {
+    fn status_code(&self) -> http::StatusCode {
+        http::StatusCode::BAD_REQUEST
+    }
+
+    topcoat_core::impl_http_error_response_any!();
+}
+
 /// Returns `true` if the location is an absolute `http` or `https` URL.
 fn is_absolute(location: &str) -> bool {
     ["http://", "https://"].iter().any(|scheme| {

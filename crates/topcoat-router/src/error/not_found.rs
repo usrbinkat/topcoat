@@ -1,5 +1,6 @@
 use http::StatusCode;
-use topcoat_core::{context::Cx, error::Result};
+use topcoat_core::context::Cx;
+use topcoat_core::error::{HttpErrorResponse, Result};
 
 use crate::response::{IntoResponse, Response};
 
@@ -47,8 +48,16 @@ impl std::fmt::Display for NotFoundError {
 
 impl std::error::Error for NotFoundError {}
 
+impl HttpErrorResponse for NotFoundError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::NOT_FOUND
+    }
+
+    topcoat_core::impl_http_error_response_any!();
+}
+
 impl IntoResponse for NotFoundError {
     fn into_response(self, cx: &Cx) -> Result<Response> {
-        (StatusCode::NOT_FOUND, "not found").into_response(cx)
+        (self.status_code(), self.response_body()).into_response(cx)
     }
 }

@@ -87,6 +87,18 @@ impl std::fmt::Display for RewriteError {
 
 impl std::error::Error for RewriteError {}
 
+impl topcoat_core::error::HttpErrorResponse for RewriteError {
+    fn status_code(&self) -> http::StatusCode {
+        http::StatusCode::INTERNAL_SERVER_ERROR
+    }
+
+    fn response_body(&self) -> String {
+        "internal server error".to_owned()
+    }
+
+    topcoat_core::impl_http_error_response_any!();
+}
+
 /// The failure that stops a runaway rewrite chain, responding 500.
 ///
 /// The message records the chain of paths for error reporting; it is never
@@ -125,3 +137,15 @@ impl std::fmt::Display for RewriteLoopError {
 }
 
 impl std::error::Error for RewriteLoopError {}
+
+impl topcoat_core::error::HttpErrorResponse for RewriteLoopError {
+    fn status_code(&self) -> http::StatusCode {
+        http::StatusCode::INTERNAL_SERVER_ERROR
+    }
+
+    fn response_body(&self) -> String {
+        "internal server error".to_owned()
+    }
+
+    topcoat_core::impl_http_error_response_any!();
+}

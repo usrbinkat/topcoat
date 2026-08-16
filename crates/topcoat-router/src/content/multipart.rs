@@ -207,7 +207,7 @@ fn multipart_error(error: multer::Error) -> Error {
     } else if is_client_error(&error) {
         bad_request(error.to_string()).into()
     } else {
-        internal_server_error(error).into()
+        internal_server_error(error.to_string()).into()
     }
 }
 

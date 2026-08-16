@@ -60,7 +60,7 @@ impl Event {
     where
         T: Serialize + ?Sized,
     {
-        Ok(self.data(serde_json::to_string(value).map_err(Error::from)?))
+        Ok(self.data(serde_json::to_string(value).map_err(Error::internal)?))
     }
 
     /// Sets the event type, dispatched by an `EventSource` to the listener
@@ -159,6 +159,18 @@ impl fmt::Display for InvalidEventError {
 }
 
 impl std::error::Error for InvalidEventError {}
+
+impl topcoat_core::error::HttpErrorResponse for InvalidEventError {
+    fn status_code(&self) -> http::StatusCode {
+        http::StatusCode::INTERNAL_SERVER_ERROR
+    }
+
+    fn response_body(&self) -> String {
+        "internal server error".to_owned()
+    }
+
+    topcoat_core::impl_http_error_response_any!();
+}
 
 /// Returns the `Last-Event-ID` header of the current request, or [`None`]
 /// when it is absent or not valid UTF-8.

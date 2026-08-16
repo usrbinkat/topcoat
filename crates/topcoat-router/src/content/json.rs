@@ -140,7 +140,7 @@ where
     fn into_response(self, cx: &Cx) -> Result<Response> {
         (
             [(CONTENT_TYPE, HeaderValue::from_static("application/json"))],
-            serde_json::to_vec(&self.0)?,
+            serde_json::to_vec(&self.0).map_err(Error::internal)?,
         )
             .into_response(cx)
     }

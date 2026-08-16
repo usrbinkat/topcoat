@@ -66,12 +66,14 @@ impl Path {
     ///
     /// The root path `"/"` is normalized to an empty inner representation. Every
     /// other path must be a sequence of `/`-prefixed, non-empty segments, each a
-    /// valid [`PathSegment`]. Returns [`PathError`] if `s` is malformed.
+    /// valid [`PathSegment`]. A single trailing slash is permitted and preserved
+    /// in the inner representation; doubled slashes are rejected.
     ///
     /// # Errors
     ///
     /// Returns [`PathError`] if `s` is not a valid path: it must be empty, be
-    /// the root `"/"`, or be a sequence of `/`-prefixed valid segments.
+    /// the root `"/"`, or be a sequence of `/`-prefixed valid segments with an
+    /// optional trailing `/`.
     #[allow(clippy::should_implement_trait)]
     pub const fn from_str(s: &str) -> Result<&Self, PathError> {
         let s = match s.as_bytes() {
@@ -88,10 +90,17 @@ impl Path {
             return Err(PathError::MissingLeadingSlash);
         }
         // Walk the `/`-separated segments, validating each `bytes[start..end)`.
+        // A single trailing slash is accepted (the empty final segment is
+        // skipped); doubled slashes in the middle are still rejected.
+        let has_trailing_slash = bytes[len - 1] == b'/';
         let mut start = 1;
         let mut i = 1;
         while i <= len {
             if i == len || bytes[i] == b'/' {
+                // Skip the empty segment produced by a trailing slash.
+                if start == i && has_trailing_slash && i == len {
+                    break;
+                }
                 if let Err(err) = validate_segment(bytes, start, i) {
                     return Err(err);
                 }
@@ -165,7 +174,7 @@ impl Path {
         if self.inner.is_empty() {
             return Cow::Borrowed("/");
         }
-        let stripped = self
+        let mut stripped = self
             .segments()
             .filter(|s| !s.is_group())
             .collect::<PathBuf>()
@@ -175,6 +184,12 @@ impl Path {
         // result back to "/": matchit rejects route paths that don't start with "/".
         if stripped.is_empty() {
             return Cow::Borrowed("/");
+        }
+        // Preserve a trailing slash so matchit sees the same path the route
+        // was declared with. The trailing slash was accepted during validation
+        // but filtered out of `segments()`.
+        if self.inner.ends_with('/') {
+            stripped.push('/');
         }
         Cow::Owned(stripped)
     }
@@ -300,6 +315,16 @@ impl Path {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Returns `true` if the path has a trailing `/`.
+    ///
+    /// A trailing slash is semantically significant in HTTP: `/users/` and
+    /// `/users` are distinct URLs. This method allows callers to distinguish
+    /// the two without inspecting the raw string.
+    #[must_use]
+    pub fn has_trailing_slash(&self) -> bool {
+        self.inner.ends_with('/')
+    }
 }
 
 impl Display for Path {
@@ -371,7 +396,11 @@ impl<'path> Iterator for PathSegments<'path> {
             None => self.last_segment(),
         };
         // The path was validated on construction, so its segments need no
-        // re-validation here.
+        // re-validation here. Filter out the empty trailing element produced
+        // by a trailing slash so it does not become a nonsensical segment.
+        if segment.is_empty() {
+            return self.next();
+        }
         Some(PathSegment::new_unchecked(segment))
     }
 }
@@ -388,6 +417,10 @@ impl DoubleEndedIterator for PathSegments<'_> {
             }
             None => self.last_segment(),
         };
+        // Filter out the empty trailing element from a trailing slash.
+        if segment.is_empty() {
+            return self.next_back();
+        }
         Some(PathSegment::new_unchecked(segment))
     }
 }
@@ -401,7 +434,7 @@ impl FusedIterator for PathSegments<'_> {}
 pub enum PathError {
     /// The path was non-empty but did not start with `/`.
     MissingLeadingSlash,
-    /// A segment was empty, as produced by a trailing or doubled `/`.
+    /// A segment was empty, as produced by a doubled `/`.
     EmptySegment,
     /// A `{` parameter or catch-all segment was missing its closing `}`.
     MissingClosingBrace,
@@ -1066,10 +1099,12 @@ mod tests {
             "",
             "/",
             "/users",
+            "/users/",
             "/users/{id}",
             "/users/{id}/posts/{*rest}",
             "/(auth)/dashboard/{user_id}",
             "/{_private}",
+            "/v2/{*ns}/blobs/",
         ] {
             assert!(Path::from_str(input).is_ok(), "rejected `{input}`");
         }
@@ -1080,7 +1115,6 @@ mod tests {
         use PathError::*;
         let cases = [
             ("users", MissingLeadingSlash),
-            ("/users/", EmptySegment),
             ("/users//posts", EmptySegment),
             ("/foo{bar}", UnexpectedBracket),
             ("/{id", MissingClosingBrace),
@@ -1276,5 +1310,58 @@ mod tests {
         let seg = PathSegment::new("{_private}");
         assert!(seg.is_param());
         assert_eq!(seg.as_param(), Some(&"_private"));
+    }
+
+    // -- Trailing slash --
+
+    #[test]
+    fn path_trailing_slash_accepted() {
+        let path = Path::from_str("/users/").unwrap();
+        let segs: Vec<_> = path.segments().collect();
+        assert_eq!(segs, vec![PathSegment::Static("users")]);
+        assert_eq!(path.to_matchit_path(), "/users/");
+    }
+
+    #[test]
+    fn path_trailing_slash_with_params() {
+        let path = Path::new("/v2/{*ns}/blobs/");
+        let segs: Vec<_> = path.segments().collect();
+        assert_eq!(
+            segs,
+            vec![
+                PathSegment::Static("v2"),
+                PathSegment::CatchAll("ns"),
+                PathSegment::Static("blobs"),
+            ]
+        );
+        assert_eq!(path.to_matchit_path(), "/v2/{*ns}/blobs/");
+    }
+
+    #[test]
+    fn path_double_slash_still_rejected() {
+        assert_eq!(
+            Path::from_str("/users//posts"),
+            Err(PathError::EmptySegment)
+        );
+    }
+
+    #[test]
+    fn path_trailing_slash_no_segments_is_root() {
+        let path = Path::new("/");
+        assert_eq!(path.segments().count(), 0);
+        assert_eq!(path.to_matchit_path(), "/");
+    }
+
+    #[test]
+    fn path_trailing_slash_display() {
+        let path = Path::new("/users/");
+        assert_eq!(path.to_string(), "/users/");
+    }
+
+    #[test]
+    fn path_trailing_slash_starts_with() {
+        let path = Path::new("/users/");
+        assert!(path.starts_with(Path::new("/users")));
+        assert!(path.starts_with(Path::new("/users/")));
     }
 }

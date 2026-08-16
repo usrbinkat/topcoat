@@ -316,8 +316,8 @@ where
 {
     fn into_response_parts(self, _cx: &Cx, parts: &mut Parts) -> Result<()> {
         for (name, value) in self {
-            let name = name.try_into().map_err(Error::from)?;
-            let value = value.try_into().map_err(Error::from)?;
+            let name = name.try_into().map_err(|e| Error::internal(e))?;
+            let value = value.try_into().map_err(|e| Error::internal(e))?;
             parts.headers.insert(name, value);
         }
         Ok(())
