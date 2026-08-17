@@ -170,6 +170,10 @@ websocket = [
 	"serve",
 	"topcoat-router/websocket",
 ]
+outbound = [
+	"router",
+	"topcoat-router/outbound",
+]
 
 [dependencies]
 topcoat-alpine-ajax = { workspace = true, optional = true }
