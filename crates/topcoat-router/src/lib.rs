@@ -27,6 +27,8 @@ mod router;
 mod service;
 #[cfg(feature = "tower")]
 pub mod tower;
+#[cfg(feature = "outbound")]
+pub mod outbound;
 
 pub use body::*;
 pub use body_limit::*;

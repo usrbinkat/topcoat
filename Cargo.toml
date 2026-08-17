@@ -200,6 +200,8 @@ toasty = "0.7"
 tokio = "1.51.1"
 toml = "1.1.2"
 tokio-tungstenite = { version = "0.29", default-features = false }
+dashmap = "6"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 tower = "0.5"
 tower-http = "0.7"
 ureq = "3.3"
